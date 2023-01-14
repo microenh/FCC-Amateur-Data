@@ -121,7 +121,13 @@ int mainFlat(void) {
 }
 
 const char *dbName = "fcc.sqlite";
+const char *indexName = "FCC_Calls.ndx";
+const char *dataName = "FCC_Calls.db";
 const char *query = "select callsign, last_name, first_name from lookup where callsign = ?";
+
+
+
+
 
 int mainSQL(void) {
   sqlite3 *pDb;
@@ -165,17 +171,107 @@ int mainSQL(void) {
   return 0;
 }
 
+// K3ADP
+// KA1WSD
+// KB5TZA
+// KC1JKT
+// KC6OER
+// KD4MTD
+// KD8UCS
+// KE4FQR
+// KE8HXK
+// KF6YNP
+// KG5UNF
+// KI4PXQ
+// KJ6YEV
+// KK7HN
+// KM6WEV
+// KO4NM
+// N3JKU
+// N8IAY
+// W7JCW
+// WB2ZZD
+
+
+
+int binSearch(FILE *f, int root, const char* targetCall) {
+  struct index_rec rec;
+  struct index_hdr hdr;
+
+  fseek(f, sizeof(struct index_hdr) + sizeof(struct index_rec) * hdr.root, SEEK_SET);
+  fread(&rec, sizeof(struct index_rec), 1, f);
+
+  uint16_t high = rec.active;
+  uint16_t low = 0;
+  uint16_t mid = (high + low) / 2;
+  // printf("\r\n");
+  while (low < high) {
+    // printf("%d ", mid);
+    int c = strcmp(targetCall, rec.key[mid]);
+    if (!c) {
+      break;
+    } else if (c > 0) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+    mid = (high + low) / 2;
+  }
+  if (mid == rec.active) {
+    if (rec.leaf) {
+      return (-1);
+    } else {
+      return (binSearch (f, rec.child[rec.active], targetCall));
+    }
+  } else if (strcmp(targetCall, rec.key[mid])) {
+    if (rec.leaf) {
+      return (-1);
+    } else {
+      return (binSearch (f, rec.child[mid], targetCall));
+    } 
+  }
+  return rec.record[mid];
+}
+
+
+void lookupBTree(const char *targetCall) {
+  struct index_hdr hdr;
+  struct fcc_rec fcc;
+
+  FILE *f = fopen(indexName, "rb");
+  fread(&hdr, sizeof(struct index_hdr), 1, f);
+  int r = binSearch(f, hdr.root, targetCall);
+  fclose(f);
+  if (r > -1) {
+    f = fopen(dataName, "rb");
+    fseek(f, r * sizeof(struct fcc_rec), SEEK_SET);
+    fread(&fcc, sizeof(fcc), 1, f);
+    printf("%s\r\n", fcc.entity_name);
+  } else {
+    printf("Not found.\r\n");
+  }
+}
+
+void mainBTree(void) {
+  struct index_hdr hdr;
+  struct index_rec rec;
+  FILE *f = fopen(indexName, "rb");
+  fread(&hdr, sizeof(hdr), 1, f);
+  fseek(f, sizeof(struct index_rec) * hdr.root, SEEK_CUR);
+  fread(&rec, sizeof(rec), 1, f);
+  fclose(f);
+
+  for(int i=0; i < 1; i++) {
+    char test[10];
+    strcpy(test, rec.key[i]);
+    // test[strlen(test) - 1]--;
+    lookupBTree(test);
+  }
+
+}
+
 int main(void) {
   // return mainFlat();
   // return mainSQL();
-
-  struct index_hdr hdr;
-  struct index_rec rec;
-
-  printf("sizeof(index_hdr) %ld, sizeof(index_rec) %ld\r\n", sizeof(struct index_hdr), sizeof(struct index_rec));
-  FILE *f = fopen("/Users/mark/Developer/FCC Amateur Data/FCC_Calls.ndx", "rb");
-  fread(&hdr, sizeof(struct index_hdr), 1, f);
-  fseek(f, sizeof(struct index_rec) * hdr.root, SEEK_CUR);
-  fread(&rec, sizeof(struct index_rec), 1, f);
-  fclose(f);
+  mainBTree();
 }
