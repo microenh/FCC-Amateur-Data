@@ -171,34 +171,11 @@ int mainSQL(void) {
   return 0;
 }
 
-// K3ADP
-// KA1WSD
-// KB5TZA
-// KC1JKT
-// KC6OER
-// KD4MTD
-// KD8UCS
-// KE4FQR
-// KE8HXK
-// KF6YNP
-// KG5UNF
-// KI4PXQ
-// KJ6YEV
-// KK7HN
-// KM6WEV
-// KO4NM
-// N3JKU
-// N8IAY
-// W7JCW
-// WB2ZZD
-
-
-
-int binSearch(FILE *f, int root, const char* targetCall) {
+int binSearch(FILE *f, int nodeIdx, const char* targetCall) {
   struct index_rec rec;
   struct index_hdr hdr;
 
-  fseek(f, sizeof(struct index_hdr) + sizeof(struct index_rec) * hdr.root, SEEK_SET);
+  fseek(f, sizeof(struct index_hdr) + sizeof(struct index_rec) * nodeIdx, SEEK_SET);
   fread(&rec, sizeof(struct index_rec), 1, f);
 
   uint16_t high = rec.active;
@@ -246,7 +223,7 @@ void lookupBTree(const char *targetCall) {
     f = fopen(dataName, "rb");
     fseek(f, r * sizeof(struct fcc_rec), SEEK_SET);
     fread(&fcc, sizeof(fcc), 1, f);
-    printf("%s\r\n", fcc.entity_name);
+    printf("%s %s\r\n", fcc.callsign, fcc.entity_name);
   } else {
     printf("Not found.\r\n");
   }
@@ -261,17 +238,55 @@ void mainBTree(void) {
   fread(&rec, sizeof(rec), 1, f);
   fclose(f);
 
-  for(int i=0; i < 1; i++) {
+  for(int i=0; i < rec.active; i++) {
     char test[10];
     strcpy(test, rec.key[i]);
-    // test[strlen(test) - 1]--;
+    // test[strlen(test) - 1];
     lookupBTree(test);
   }
 
 }
 
+void mainBTreeAll() {
+  sqlite3 *pDb;
+  sqlite3_stmt *stmt;
+
+  struct index_hdr hdr;
+  struct fcc_rec fcc;
+
+  FILE *f = fopen(indexName, "rb");
+  fread(&hdr, sizeof(struct index_hdr), 1, f);
+
+  int found = 0;
+  int not_found = 0;
+  int records = 0;
+  int rc = sqlite3_open_v2(dbName, &pDb, SQLITE_OPEN_READONLY, NULL);
+  if (!rc) {
+    rc = sqlite3_prepare_v2(pDb, "select callsign from lookup", -1, &stmt, NULL);
+    while (sqlite3_step(stmt) != SQLITE_DONE) {
+      records++;
+      if (records % 100000 == 0) {
+        printf("%d  ", records);
+      }
+      int r = binSearch(f, hdr.root, (const char *) sqlite3_column_text(stmt, 0));
+      if (r == -1) {
+        not_found++;
+      } else {
+        found++;
+      }
+    }
+  }
+  sqlite3_close_v2(pDb);
+  fclose(f);
+
+  printf("\r\nFound: %d, Not Found: %d\r\n", found, not_found);
+}
+
+
+
 int main(void) {
   // return mainFlat();
   // return mainSQL();
-  mainBTree();
+  // mainBTree();
+  mainBTreeAll();
 }
