@@ -173,7 +173,6 @@ int mainSQL(void) {
 
 int binSearch(FILE *f, int nodeIdx, const char* targetCall) {
   struct index_rec rec;
-  struct index_hdr hdr;
 
   fseek(f, sizeof(struct index_hdr) + sizeof(struct index_rec) * nodeIdx, SEEK_SET);
   fread(&rec, sizeof(struct index_rec), 1, f);
@@ -266,7 +265,7 @@ void mainBTreeAll() {
     while (sqlite3_step(stmt) != SQLITE_DONE) {
       records++;
       if (records % 100000 == 0) {
-        printf("%d  ", records);
+        printf("%s (%d)\r\n", (const char *) sqlite3_column_text(stmt, 0), records);
       }
       int r = binSearch(f, hdr.root, (const char *) sqlite3_column_text(stmt, 0));
       if (r == -1) {

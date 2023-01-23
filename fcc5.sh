@@ -4,7 +4,7 @@
 #  FCC Database
 #
 #  Created by Mark Erbaugh on 11/5/21.
-#
+#  
 
 # Mark Erbaugh 11/5/2021
 # this script converts the FCC amateur database download (l_amat.zip)
@@ -142,14 +142,27 @@ sqlite3 fcc.sqlite 'create table HD
 
 sqlite3 fcc.sqlite 'create table lookup (
   callsign            char(10)     not null primary key,
-  radio_service_code  char(2)      null,
-  operator_class      char(1)      null,
+  radio_service_code  char(2)      null, 
+  grant_date          char(10)     null,
+  expired_date        char(10)     null,
+  cancellation_date   char(10)     null,
+  operator_class      char(1)      null, 
+  previous_callsign   char(10)     null,
+  trustee_callsign    char(10)     null,
+  trustee_name        varchar(50)  null,
+  applicant_type_code char(1)      null, 
   entity_name         varchar(200) null,
+  first_name          varchar(20)  null,
+  mi                  char(1)      null,
+  last_name           varchar(20)  null,
+  suffix              char(3)      null,
   street_address      varchar(60)  null,
   city                varchar(20)  null,
   state               char(2)      null,
   zip_code            char(9)      null,
-  po_box              varchar(20)  null
+  po_box              varchar(20)  null,
+  attention_line      varchar(35)  null,
+  frn                 char(10)     null
 )'
 
 sqlite3 fcc.sqlite '.import l_amat/HD.dat HD'
@@ -160,13 +173,26 @@ sqlite3 fcc.sqlite 'insert into lookup
 select
   AM.callsign,
   HD.radio_service_code,
+  HD.grant_date,
+  HD.expired_date,
+  HD.cancellation_date,
   AM.operator_class,
+  AM.previous_callsign,
+  AM.trustee_callsign,
+  AM.trustee_name,
+  EN.applicant_type_code,
   EN.entity_name,
+  EN.first_name,
+  EN.mi,
+  EN.last_name,
+  EN.suffix,
   EN.street_address,
   EN.city,
   EN.state,
   EN.zip_code,
-  EN.po_box
+  EN.po_box,
+  EN.attention_line,
+  EN.frn
 from HD
   inner join EN on HD.unique_system_identifier = EN.unique_system_identifier
   inner join AM on HD.unique_system_identifier = AM.unique_system_identifier
@@ -178,17 +204,17 @@ sqlite3 fcc.sqlite 'drop table EN'
 sqlite3 fcc.sqlite 'drop table AM'
 sqlite3 fcc.sqlite 'drop table HD'
 
-# sqlite3 fcc.sqlite 'create table counts (line text)'
-#
-#
-# sqlite3 fcc.sqlite '.import l_amat/counts counts'
-#
-# sqlite3 fcc.sqlite 'create table db_date (date text)'
-#
-#
-# sqlite3 fcc.sqlite 'insert into db_date select substr(line, 21, 99) from counts limit 1'
-#
-# sqlite3 fcc.sqlite 'drop table counts'
+sqlite3 fcc.sqlite 'create table counts (line text)'
+
+
+sqlite3 fcc.sqlite '.import l_amat/counts counts'
+
+sqlite3 fcc.sqlite 'create table db_date (date text)'
+
+
+sqlite3 fcc.sqlite 'insert into db_date select substr(line, 21, 99) from counts limit 1'
+
+sqlite3 fcc.sqlite 'drop table counts'
 
 sqlite3 fcc.sqlite 'VACUUM'
 

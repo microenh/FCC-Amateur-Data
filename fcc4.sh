@@ -12,14 +12,14 @@
 # compared to fcc.sh, this version creates lookup as a table rather than a view
 # and deletes all the other tables
 
-wget https://data.fcc.gov/download/pub/uls/complete/l_amat.zip
+# wget https://data.fcc.gov/download/pub/uls/complete/l_amat.zip
 
 rm fcc.sqlite
 rm -r l_amat
-rm temp.sql
 
 unzip l_amat -d l_amat
-sed -i '' 's/"//g' l_amat/AM.dat l_amat/EN.dat l_amat/HD.dat
+sed -i '' "s/\\\"/'/g" l_amat/AM.dat l_amat/EN.dat l_amat/HD.dat
+
 
 sqlite3 fcc.sqlite 'create table AM
 (

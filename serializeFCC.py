@@ -169,7 +169,7 @@ if __name__ == "__main__":
     print ("Using Disk")
     test_good()
     test_bad()
-#     # test_all()
+#    test_all()
     
     print ("")
     print ("Done")

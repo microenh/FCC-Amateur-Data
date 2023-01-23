@@ -4,24 +4,23 @@
 #  FCC Database
 #
 #  Created by Mark Erbaugh on 11/5/21.
-#
+#  
 
 # Mark Erbaugh 11/5/2021
 # this script converts the FCC amateur database download (l_amat.zip)
-# to a sqlite3 database, fcc.sqlite
+# to a sqlite3 database, fcclarge.sqlite
 # compared to fcc.sh, this version creates lookup as a table rather than a view
 # and deletes all the other tables
 
 # wget https://data.fcc.gov/download/pub/uls/complete/l_amat.zip
 
-rm fcc.sqlite
+rm fcclarge.sqlite
 rm -r l_amat
-rm temp.sql
 
 unzip l_amat -d l_amat
-sed -i '' 's/"//g' l_amat/AM.dat l_amat/EN.dat l_amat/HD.dat
+sed -i '' 's/"/\\'/g' l_amat/AM.dat l_amat/EN.dat l_amat/HD.dat
 
-sqlite3 fcc.sqlite 'create table AM
+sqlite3 fcclarge.sqlite 'create table AM
 (
       record_type                char(2)              not null,
       unique_system_identifier   numeric(9,0)         not null primary key,
@@ -43,7 +42,7 @@ sqlite3 fcc.sqlite 'create table AM
       trustee_name               varchar(50)          null
 )'
 
-sqlite3 fcc.sqlite 'create table EN
+sqlite3 fcclarge.sqlite 'create table EN
 (
       record_type               char(2)              not null,
       unique_system_identifier  numeric(9,0)         not null primary key,
@@ -77,7 +76,7 @@ sqlite3 fcc.sqlite 'create table EN
       linked_callsign           char(10)             null
 )'
 
-sqlite3 fcc.sqlite 'create table HD
+sqlite3 fcclarge.sqlite 'create table HD
 (
       record_type                  char(2)              not null,
       unique_system_identifier     numeric(9,0)         not null primary key,
@@ -140,56 +139,80 @@ sqlite3 fcc.sqlite 'create table HD
       payment_cert_900             char(1)              null
 )'
 
-sqlite3 fcc.sqlite 'create table lookup (
-  callsign            char(10)     not null primary key,
-  radio_service_code  char(2)      null,
-  operator_class      char(1)      null,
+sqlite3 fcclarge.sqlite 'create table lookup (
+  radio_service_code  char(2)      null, -- HA - amateur, HV - vanity
+  grant_date          char(10)     null,
+  expired_date        char(10)     null,
+  cancellation_date   char(10)     null,
+  callsign            char(10)     null,
+  operator_class      char(1)      null, -- A - Advanced, E - Amateur Extra, G - General, N - Novice, P - Technician Plus, T - Technician
+  previous_callsign   char(10)     null,
+  trustee_callsign    char(10)     null,
+  trustee_name        varchar(50)  null,
+  applicant_type_code char(1)      null, -- B - Amateur Club, G - Governement Enttiy, I - Individual, M - Military Recreaction. R - Races
+                                         -- C - Corporation, D - General Partnership, E - Limited Partnership, F - Limited Liability Partnership,
+                                         -- H - Other, J - Joint Venture, L - Limited Liability Company, O - Consortium, P - Partnership,
+                                         -- T - Trust, U - Unincorporated Association
   entity_name         varchar(200) null,
+  first_name          varchar(20)  null,
+  mi                  char(1)      null,
+  last_name           varchar(20)  null,
+  suffix              char(3)      null,
   street_address      varchar(60)  null,
   city                varchar(20)  null,
   state               char(2)      null,
   zip_code            char(9)      null,
-  po_box              varchar(20)  null
+  po_box              varchar(20)  null,
+  attention_line      varchar(35)  null,
+  frn                 char(10)     null
 )'
 
-sqlite3 fcc.sqlite '.import l_amat/HD.dat HD'
-sqlite3 fcc.sqlite '.import l_amat/AM.dat AM'
-sqlite3 fcc.sqlite '.import l_amat/EN.dat EN'
+sqlite3 fcclarge.sqlite '.import l_amat/HD.dat HD'
+sqlite3 fcclarge.sqlite '.import l_amat/AM.dat AM'
+sqlite3 fcclarge.sqlite '.import l_amat/EN.dat EN'
 
-sqlite3 fcc.sqlite 'insert into lookup
+sqlite3 fcclarge.sqlite 'insert into lookup
 select
-  AM.callsign,
   HD.radio_service_code,
+  HD.grant_date,
+  HD.expired_date,
+  HD.cancellation_date,
+  AM.callsign,
   AM.operator_class,
+  AM.previous_callsign,
+  AM.trustee_callsign,
+  AM.trustee_name,
+  EN.applicant_type_code,
   EN.entity_name,
+  EN.first_name,
+  EN.mi,
+  EN.last_name,
+  EN.suffix,
   EN.street_address,
   EN.city,
   EN.state,
   EN.zip_code,
-  EN.po_box
+  EN.po_box,
+  EN.attention_line,
+  EN.frn
 from HD
   inner join EN on HD.unique_system_identifier = EN.unique_system_identifier
   inner join AM on HD.unique_system_identifier = AM.unique_system_identifier
 where HD.license_status = "A"'
 
-# sqlite3 fcc.sqlite 'create index callsign on lookup(callsign)'
+sqlite3 fcclarge.sqlite 'create index callsign on lookup(callsign)'
 
-sqlite3 fcc.sqlite 'drop table EN'
-sqlite3 fcc.sqlite 'drop table AM'
-sqlite3 fcc.sqlite 'drop table HD'
+sqlite3 fcclarge.sqlite 'create table counts (line text)'
 
-# sqlite3 fcc.sqlite 'create table counts (line text)'
-#
-#
-# sqlite3 fcc.sqlite '.import l_amat/counts counts'
-#
-# sqlite3 fcc.sqlite 'create table db_date (date text)'
-#
-#
-# sqlite3 fcc.sqlite 'insert into db_date select substr(line, 21, 99) from counts limit 1'
-#
-# sqlite3 fcc.sqlite 'drop table counts'
 
-sqlite3 fcc.sqlite 'VACUUM'
+sqlite3 fcclarge.sqlite '.import l_amat/counts counts'
+
+sqlite3 fcclarge.sqlite 'create table db_date (date text)'
+
+
+sqlite3 fcclarge.sqlite 'insert into db_date select substr(line, 21, 99) from counts limit 1'
+
+
+sqlite3 fcclarge.sqlite 'VACUUM'
 
 rm -r l_amat
