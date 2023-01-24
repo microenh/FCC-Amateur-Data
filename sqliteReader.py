@@ -27,44 +27,27 @@ def varint(s, ofs):
 
 class SqliteReader:
     
+    #full header decode format ">16sH6B12I20sII"
+    #full page header decode format ">B3HB"
+    
     def __init__(self, filename):
         self.filename = filename
         self.recbuffer = bytearray(100)
         with open(filename, "rb") as f:
             f.readinto(self.recbuffer)
-            (header_string,
-             self.page_size,
-             file_format_write,
-             file_format_read,
-             self.reserved_space,
-             max_embedded_payload,
-             min_embedded_payload,
-             leaf_payload_fraction,
-             file_change_counter,
-             database_file_size,
-             first_freelist,
-             freelist_count,
-             schema_cookie,
-             schema_format,
-             default_cache,
-             largest_btree,
-             text_encoding,
-             user_version,
-             incremental_vacuum,
-             application_id,
-             reserved,
-             version_valid_for,
-             sqlite_version) = struct.unpack(">16sH6B12I20sII", self.recbuffer)
+            (self.page_size,
+             dummy,
+             reserved_space) = struct.unpack_from(">2HB", self.recbuffer, 16)
             if self.page_size == 1:
                 self.page_size = 65536
-            self.U = self.page_size - self.reserved_space # - hdr_ofs
+            self.U = self.page_size - reserved_space # - hdr_ofs
             self.M = ((self.U - 12) * 32 // 255) - 23
             b1 = bytearray(self.page_size - 100)
             f.readinto(b1)
             self.recbuffer += b1
             b1 = None
         self._parse_page(100)
-        self.roots = tuple([i[:4] for i in self.payloads])
+        self.roots = tuple([self._parse_payload(i,4) for i in self.cell_ofs])            
         
     def _read_page(self, f, i):
         f.seek((i - 1) * self.page_size)
@@ -73,64 +56,56 @@ class SqliteReader:
             
     def _parse_page(self, offset=0):
         (self.type,
-         first_freeblock,
-         number_cells,
-         cell_content,
-         fragment) = struct.unpack_from(">B3HB", self.recbuffer, offset)
-        if cell_content == 0:
-            cell_content = 65536
+         dummy,
+         self.number_cells) = struct.unpack_from(">B2H", self.recbuffer, offset)
         offset += 8
         if self.type in (2, 5):
-            right_child = struct.unpack_from(">I", self.recbuffer, offset)[0]
+            self.right_child = struct.unpack_from(">I", self.recbuffer, offset)[0]
             offset += 4
         if self.type != 5:
-            X = self.U - 35 if self.type == 0x0d else int(((self.U - 12) * 64 // 255) - 23)            
-        row_ids = []
-        payloads = []
-        left_child = []
-        cell_ofs = struct.unpack_from(">%dH" % number_cells, self.recbuffer, offset)
+            self.X = self.U - 35 if self.type == 0x0d else int(((self.U - 12) * 64 // 255) - 23)            
+        # row_ids = []
+        # payloads = []
+        self.cell_ofs = struct.unpack_from(">%dH" % self.number_cells, self.recbuffer, offset)
 
-        for i in cell_ofs:
-            if self.type in (2,5):
-                left_child.append(struct.unpack_from(">I", self.recbuffer, i)[0])
-                i += 4
-            if self.type != 0x05:
-                P, s = varint(self.recbuffer, i)
-                i += s
-                if P <= X:
-                    base_payload_size = P
-                else:
-                    K = self.M + ((P - self.M) % (self.U - 4))
-                    if K <= X:
-                        base_payload_size = K
-                    else:
-                        base_payload_size = M
-            if self.type in (0x0d, 0x05):
-                ri, s = varint(self.recbuffer, i)
-                i += s
-                row_ids.append(ri)
-            if self.type != 0x05:
-                if base_payload_size == P:
-                    overflow = 0
-                else:
-                    overflow = struct.unpack_from(">I", self.recbuffer, i + base_payload_size)
-                payloads.append(self._parse_record(i))
-        
+    def _parse_payload(self, i, max=None):
         if self.type in (2,5):
-            left_child.append(right_child)
-            self.children = tuple(left_child)
-        else:
-            self.children = ()
-        self.row_ids = tuple(row_ids)
-        self.payloads = tuple(payloads)
+            self.left_child = (struct.unpack_from(">I", self.recbuffer, i)[0])
+            i += 4
+        if self.type != 0x05:
+            P, s = varint(self.recbuffer, i)
+            i += s
+            if P <= self.X:
+                base_payload_size = P
+            else:
+                K = self.M + ((P - self.M) % (self.U - 4))
+                if K <= self.X:
+                    base_payload_size = K
+                else:
+                    base_payload_size = self.M
+        if self.type in (0x0d, 0x05):
+            self.row_id, s = varint(self.recbuffer, i)
+            i += s
+        if self.type != 0x05:
+            if base_payload_size == P:
+                overflow = 0
+            else:
+                overflow = struct.unpack_from(">I", self.recbuffer, i + base_payload_size)
+            self.payload = self._parse_record(i, max)
+            return self.payload
+        
             
-    def _parse_record(self, ofs):
+    def _parse_record(self, ofs, max):
         offset = ofs
         header_size,s = varint(self.recbuffer, offset)
         offset += s
         data_offset = header_size + ofs
         values = []
+        ctr = 0
         while (offset < header_size + ofs):
+            if max is not None and ctr == max:
+                break
+            ctr += 1
             i,s = varint(self.recbuffer, offset)
             offset += s
             if i == 0:  # NULL
@@ -183,13 +158,29 @@ class SqliteReader:
         with open(self.filename, "rb") as f:
             self._read_page(f, table_no)
             while (True):
-                b = bisect.bisect_left(self.payloads, call, key = lambda i: i[0])
-                if (b < len(self.payloads)) and (self.payloads[b][0] == call):
-                    return self.payloads[b]
+                lo = 0
+                hi = self.number_cells
+                while lo < hi:
+                    mid = (lo + hi) // 2
+                    t = self._parse_payload(self.cell_ofs[mid],1)[0]
+                    if t < call:
+                        lo = mid + 1
+                    else:
+                        hi = mid
+                if (lo != mid and lo != self.number_cells):
+                    self._parse_payload(self.cell_ofs[lo],1)
+                b = lo
+                if b == self.number_cells:
+                    if self.type == 0x02:
+                        self._read_page(f, self.right_child)
+                    else:
+                        return "<%s> (max) Not found" % call
+                elif (self.payload[0] == call):
+                    return self._parse_payload(self.cell_ofs[b])
                 elif self.type != 0x02:
                     return "<%s> Not found" % call
                 else:
-                    self._read_page(f, self.children[b])
+                    self._read_page(f, self.left_child)
                     
 if __name__ == "__main__":
     import sys
