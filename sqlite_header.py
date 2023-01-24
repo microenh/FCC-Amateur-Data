@@ -2,7 +2,9 @@ import struct
 
 class HDR:
     def __init__(self, f):
+        b = bytearray(100)
         f.seek(0)
+        f.readinto(b)
         (self.header_string,
          self.page_size,
          self.file_format_write,
@@ -25,6 +27,9 @@ class HDR:
          self.application_id,
          self.reserved,
          self.version_valid_for,
-         self.sqlite_version) = struct.unpack(">16sH6B12I20sII", f.read(100))
+         self.sqlite_version) = struct.unpack(">16sH6B12I20sII", b)
         if self.page_size == 1:
             self.page_size = 65536
+        self.U = self.page_size - self.reserved_space # - hdr_ofs
+        self.M = ((self.U - 12) * 32 // 255) - 23
+        

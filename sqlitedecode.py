@@ -3,6 +3,9 @@ import bisect
 from sqlite_header import HDR
 from sqlite_page import PAGE
 
+        
+    
+
 def find(call, file=None):
     if file is None:
         file = db_file
@@ -45,7 +48,6 @@ if __name__ == "__main__":
     else:
         db_file = "fcc.sqlite"
         print ("desktop")
-    
     
     
     
