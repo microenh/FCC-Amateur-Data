@@ -8,7 +8,6 @@ init the instance with the file name
 find_call(<call>)
 """
 import struct
-import bisect
 
 def varint(s, ofs):
     r = 0
@@ -18,11 +17,7 @@ def varint(s, ofs):
         r = (r << 7) + (j & 127)
         i += 1
         j = s[ofs + i]
-    if (i == 8):
-        r = (r << 8) + j
-    else:
-        r = (r << 7) + j
-    return r, i + 1
+    return (r << (8 if i == 8 else 7)) + j, i + 1
 
 
 class SqliteReader:
@@ -40,12 +35,12 @@ class SqliteReader:
              reserved_space) = struct.unpack_from(">2HB", self.recbuffer, 16)
             if self.page_size == 1:
                 self.page_size = 65536
-            self.U = self.page_size - reserved_space # - hdr_ofs
+            self.U = self.page_size - reserved_space # - hdr_ofs?
             self.M = ((self.U - 12) * 32 // 255) - 23
             b1 = bytearray(self.page_size - 100)
             f.readinto(b1)
             self.recbuffer += b1
-            b1 = None
+            del b1
         self._parse_page(100)
         self.roots = tuple([self._parse_payload(i,4) for i in self.cell_ofs])            
         
@@ -100,7 +95,7 @@ class SqliteReader:
         values = []
         ctr = 0
         while (offset < header_size + ofs):
-            if max is not None and ctr == max:
+            if ctr == max:
                 break
             ctr += 1
             i,s = varint(self.recbuffer, offset)
@@ -147,9 +142,10 @@ class SqliteReader:
                 offset += ct
         return tuple(values)
     
-    def find_call(self, call):
+    
+    def find(self, call, table):
         for root in self.roots:
-            if root[0] == 'table' and root[1] == 'lookup':
+            if root[0] == 'table' and root[1] == table:
                 table_no = root[3]
                 break
         with open(self.filename, "rb") as f:
@@ -175,6 +171,9 @@ class SqliteReader:
                         self._parse_payload(self.cell_ofs[lo], 1)
                     child = self.left_child
                 self._read_page(f, child)
+
+    def find_call(self, call):
+        return self.find(call, 'lookup')
 
 
 if __name__ == "__main__":
