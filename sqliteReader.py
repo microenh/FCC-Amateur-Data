@@ -64,8 +64,6 @@ class SqliteReader:
             offset += 4
         if self.type != 5:
             self.X = self.U - 35 if self.type == 0x0d else int(((self.U - 12) * 64 // 255) - 23)            
-        # row_ids = []
-        # payloads = []
         self.cell_ofs = struct.unpack_from(">%dH" % self.number_cells, self.recbuffer, offset)
 
     def _parse_payload(self, i, max=None):
@@ -94,7 +92,6 @@ class SqliteReader:
             self.payload = self._parse_record(i, max)
             return self.payload
         
-            
     def _parse_record(self, ofs, max):
         offset = ofs
         header_size,s = varint(self.recbuffer, offset)
@@ -162,26 +159,24 @@ class SqliteReader:
                 hi = self.number_cells
                 while lo < hi:
                     mid = (lo + hi) // 2
-                    t = self._parse_payload(self.cell_ofs[mid],1)[0]
-                    if t < call:
+                    key = self._parse_payload(self.cell_ofs[mid], 1)[0]
+                    if key == call:
+                        return self._parse_payload(self.cell_ofs[mid])
+                    if key < call:
                         lo = mid + 1
                     else:
                         hi = mid
-                if (lo != mid and lo != self.number_cells):
-                    self._parse_payload(self.cell_ofs[lo],1)
-                b = lo
-                if b == self.number_cells:
-                    if self.type == 0x02:
-                        self._read_page(f, self.right_child)
-                    else:
-                        return "<%s> (max) Not found" % call
-                elif (self.payload[0] == call):
-                    return self._parse_payload(self.cell_ofs[b])
-                elif self.type != 0x02:
-                    return "<%s> Not found" % call
+                if self.type != 2:
+                    return ()
+                if lo == self.number_cells:
+                    child = self.right_child
                 else:
-                    self._read_page(f, self.left_child)
-                    
+                    if (lo != mid):
+                        self._parse_payload(self.cell_ofs[lo], 1)
+                    child = self.left_child
+                self._read_page(f, child)
+
+
 if __name__ == "__main__":
     import sys
     if sys.version.find("Micro") >= 0:
