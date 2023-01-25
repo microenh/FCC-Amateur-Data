@@ -1,5 +1,8 @@
 #pragma once
 
+#include <stdint.h>
+#include <stdio.h>
+
 union DB {
   int64_t i;
   double f;

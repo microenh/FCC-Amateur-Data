@@ -6,5 +6,6 @@ add_executable(readFCC
 )
 
 add_executable(sqliteReader
+    main.cpp
     sqliteReader.cpp
 )
