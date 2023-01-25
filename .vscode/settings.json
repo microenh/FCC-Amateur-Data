@@ -14,5 +14,10 @@
       "visibility": "hidden"
     },
   },
-  "cmake.buildBeforeRun": true,  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+  "cmake.buildBeforeRun": true,
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+  "files.associations": {
+    "stdint.h": "c",
+    "inttypes.h": "c"
+  },
 }

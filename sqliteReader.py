@@ -14,7 +14,7 @@ def varint(s, ofs):
     i = 0
     j = s[ofs]
     while (j & 128) and (i < 9):
-        r = (r << 7) + (j & 127)
+        r = (r << 7) | (j & 127)
         i += 1
         j = s[ofs + i]
     return (r << (8 if i == 8 else 7)) + j, i + 1
@@ -27,29 +27,31 @@ class SqliteReader:
     
     def __init__(self, filename):
         self.filename = filename
-        self.recbuffer = bytearray(100)
+        recbuffer = bytearray(100)
         with open(filename, "rb") as f:
-            f.readinto(self.recbuffer)
+            f.readinto(recbuffer)
             (self.page_size,
              dummy,
-             reserved_space) = struct.unpack_from(">2HB", self.recbuffer, 16)
+             reserved_space) = struct.unpack_from(">2HB", recbuffer, 16)
             if self.page_size == 1:
                 self.page_size = 65536
             self.U = self.page_size - reserved_space # - hdr_ofs?
             self.M = ((self.U - 12) * 32 // 255) - 23
-            b1 = bytearray(self.page_size - 100)
-            f.readinto(b1)
-            self.recbuffer += b1
-            del b1
-        self._parse_page(100)
-        self.roots = tuple([self._parse_payload(i,4) for i in self.cell_ofs])            
+            del recbuffer
+            self.recbuffer = bytearray(self.page_size - 100)
+            f.readinto(self.recbuffer)
+        self._parse_page()
+        self.roots = tuple([self._parse_payload(i-100,4) for i in self.cell_ofs])            
+        del self.recbuffer
+        self.recbuffer = bytearray(self.page_size)
         
     def _read_page(self, f, i):
         f.seek((i - 1) * self.page_size)
         f.readinto(self.recbuffer)
         self._parse_page()
             
-    def _parse_page(self, offset=0):
+    def _parse_page(self):
+        offset = 0
         (self.type,
          dummy,
          self.number_cells) = struct.unpack_from(">B2H", self.recbuffer, offset)
@@ -72,18 +74,12 @@ class SqliteReader:
                 base_payload_size = P
             else:
                 K = self.M + ((P - self.M) % (self.U - 4))
-                if K <= self.X:
-                    base_payload_size = K
-                else:
-                    base_payload_size = self.M
+                base_payload_size = K if K < self.X else self.M
         if self.type in (0x0d, 0x05):
             self.row_id, s = varint(self.recbuffer, i)
             i += s
         if self.type != 0x05:
-            if base_payload_size == P:
-                overflow = 0
-            else:
-                overflow = struct.unpack_from(">I", self.recbuffer, i + base_payload_size)
+            overflow = 0 if base_payload_size == P else struct.unpack_from(">I", self.recbuffer, i + base_payload_size)[0]
             self.payload = self._parse_record(i, max)
             return self.payload
         

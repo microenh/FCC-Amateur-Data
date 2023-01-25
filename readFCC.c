@@ -282,10 +282,9 @@ void mainBTreeAll() {
 }
 
 
-
 int main(void) {
-  // return mainFlat();
-  // return mainSQL();
+  // mainFlat();
+  mainSQL();
   // mainBTree();
-  mainBTreeAll();
+  // mainBTreeAll();
 }
