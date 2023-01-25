@@ -37,9 +37,6 @@ struct HEADER {
 
 #define convert16(value) ((0x00ff & value) << 8) | ((0xff00 & value) >> 8)
 
-
-
-
 sqliteReader::sqliteReader(const char *name) {
   // printf("sizeof HEADER %lu\r\n", sizeof(HEADER));
   filename = (char *) malloc(strlen(name) + 1);
@@ -60,8 +57,17 @@ sqliteReader::sqliteReader(const char *name) {
   fread(page_buffer, page_size - sizeof(HEADER), 1, f);
   fclose(f);
   parse_page();
-  printf("cell_offset %d\r\n", cell_offset[0]);
-  parse_payload(cell_offset[0] - 100);
+  // printf("cell_offset %d\r\n", cell_offset[0]);
+  store = &sqliteReader::store_header;
+  schema = (SCHEMA *)malloc(number_cells * sizeof(SCHEMA));
+  for (uint16_t i=0; i<number_cells; i++) {
+    data_dest = (void *)(schema + i);
+    parse_payload(cell_offset[i] - 100);
+    // printf("type: %s\r\nname: %s\r\ntbl_name: %s\r\nrootpage: %d\r\n\r\n",
+    //   schema[i].type, schema[i].name, schema[i].tbl_name, schema[i].rootpage);
+  }
+  store = &sqliteReader::store_data;
+  data_dest = (void *)&lookup;
 
 }
 
@@ -118,7 +124,7 @@ void sqliteReader::parse_payload(uint16_t ofs, uint16_t max) {
   if (type == 0xd || type == 5) {
     row_id = varint(offset);  
   }
-  printf("row_id = %d, offset = %d\r\n", row_id, offset);
+  // printf("row_id = %d, offset = %d\r\n", row_id, offset);
   if (type != 5) {
     if (P == base_payload_size ) {
       overflow = 0;
@@ -136,38 +142,195 @@ void sqliteReader::parse_payload(uint16_t ofs, uint16_t max) {
 void sqliteReader::parse_record(uint16_t ofs, uint16_t max) {
   uint16_t offset = ofs;
   uint32_t header_size = varint(offset);
-  printf("header_size = %u\r\n", header_size);
+  // printf("header_size = %u\r\n", header_size);
   uint32_t data_offset = header_size + ofs;
-  uint32_t ctr = 0;
+  uint16_t ctr = 0;
   uint32_t field_type;
-  int32_t value;
+  DB value;
   
   while (offset < header_size + ofs) {
     if (ctr == max) {
       break;
     } 
     field_type = varint(offset);
-    printf("field type: %u ", field_type);
+    // printf("field type: %u ", field_type);
     switch (field_type) {
       case 0:
-        // printf("NULL\r\n");
+        value.ptr = NULL;
         break;
       case 1:
-        value = (int8_t)page_buffer[data_offset++];
-        // printf("byte %d\r\n", value);
+        value.i = (int64_t)page_buffer[data_offset++];
         break;
       case 2:
-        value = (int8_t)page_buffer[data_offset] << 8
-                      | (int8_t)page_buffer[data_offset + 1];
+        value.i = (int64_t)page_buffer[data_offset] << 8
+              | (int64_t)page_buffer[data_offset+1];
         data_offset += 2;
-        printf ("short %d\r\n", value);
+        break;
+      case 3:
+        value.i = (int64_t)page_buffer[data_offset] << 16
+              | (int64_t)page_buffer[data_offset+1] << 8
+              | (int64_t)page_buffer[data_offset+2];
+        data_offset += 3;
+        break;
+      case 4:
+        value.i = (int64_t)page_buffer[data_offset] << 24
+              | (int64_t)page_buffer[data_offset+1] << 16
+              | (int64_t)page_buffer[data_offset+2] << 8
+              | (int64_t)page_buffer[data_offset+3];
+        data_offset += 4;
+        break;
+      case 5:
+        value.i = (int64_t)page_buffer[data_offset] << 40
+              | (int64_t)page_buffer[data_offset+1] << 32
+              | (int64_t)page_buffer[data_offset+2] << 24
+              | (int64_t)page_buffer[data_offset+3] << 16
+              | (int64_t)page_buffer[data_offset+4] << 8
+              | (int64_t)page_buffer[data_offset+5];
+        data_offset += 6;
+        break;
+      case 6:
+        value.i = (int64_t)page_buffer[data_offset] << 56
+              | (int64_t)page_buffer[data_offset+1] << 48
+              | (int64_t)page_buffer[data_offset+2] << 40
+              | (int64_t)page_buffer[data_offset+3] << 32
+              | (int64_t)page_buffer[data_offset+4] << 24
+              | (int64_t)page_buffer[data_offset+5] << 16
+              | (int64_t)page_buffer[data_offset+6] << 8
+              | (int64_t)page_buffer[data_offset+7];
+        data_offset += 8;
+        break;
+      case 7:
+        memcpy(&value.f, page_buffer+data_offset, 8);
+        data_offset += 8;
+        break;
+      case 8:
+        value.i = 0;
+        break;
+      case 9:
+        value.i = 1;
+        break;
+      case 10:
+      case 11:
         break;
       default:
-        //printf("\r\n");
+        value.ptr = page_buffer+data_offset;
+        data_offset += ((field_type & ~1) - 12) / 2; 
         break;
     }
+    // printf("\r\n");
+    (*this.*store)(ctr, field_type, value);
+    ctr++;
   }
 
+}
+
+
+void sqliteReader::save_string(uint16_t field_len, uint16_t target_len, char *dest, char *src) {
+  uint16_t move_len = field_len < target_len ? field_len : target_len;
+  memcpy(dest, src, move_len);
+  *(dest + move_len) = 0;
+}
+
+#define SAVE_STRING(x) save_string(field_len, sizeof(x) - 1, x, (char *) data.ptr);
+
+void sqliteReader::store_header(uint16_t field_no, uint32_t field_type, DB data){
+  SCHEMA *schema = (SCHEMA *)data_dest;
+  uint32_t field_len;
+  if (field_type >= 12) {
+    field_len = ((field_type & ~1) - 12) / 2; 
+  }
+  uint16_t move_len;
+  switch (field_no) {
+    case 0:
+      SAVE_STRING(schema->type);
+      break;
+    case 1:
+      SAVE_STRING(schema->name);
+      break;
+    case 2:
+      SAVE_STRING(schema->tbl_name);
+      break;
+    case 3:
+      schema->rootpage = data.i;
+      break;
+  }
+}
+
+void sqliteReader::store_data(uint16_t field_no, uint32_t field_type, DB data){
+  LOOKUP *lookup = (LOOKUP *)data_dest;
+  uint32_t field_len;
+  if (field_type >= 12) {
+    field_len = ((field_type & ~1) - 12) / 2; 
+  }
+  uint16_t move_len;
+  switch (field_no) {
+    case 0:
+      SAVE_STRING(lookup->callsign)
+      break;
+    case 1:
+      SAVE_STRING(lookup->radio_service_code);
+      break;
+    case 2:
+      SAVE_STRING(lookup->grant_date);
+      break;
+    case 3:
+      SAVE_STRING(lookup->expired_date);
+      break;
+    case 4:
+      SAVE_STRING(lookup->cancellation_date);
+      break;
+    case 5:
+      SAVE_STRING(lookup->operator_class);
+      break;
+    case 6:
+      SAVE_STRING(lookup->previous_callsign);
+      break;
+    case 7:
+      SAVE_STRING(lookup->trustee_callsign);
+      break;
+    case 8:
+      SAVE_STRING(lookup->trustee_name);
+      break;
+    case 9:
+      SAVE_STRING(lookup->applicant_type_code);
+      break;
+    case 10:
+      SAVE_STRING(lookup->entity_name);
+      break;
+    case 11:
+      SAVE_STRING(lookup->first_name);
+      break;
+    case 12:
+      SAVE_STRING(lookup->mi);
+      break;
+    case 13:
+      SAVE_STRING(lookup->last_name);
+      break;
+    case 14:
+      SAVE_STRING(lookup->suffix);
+      break;
+    case 15:
+      SAVE_STRING(lookup->street_address);
+      break;
+    case 16:
+      SAVE_STRING(lookup->city);
+      break;
+    case 17:
+      SAVE_STRING(lookup->state);
+      break;
+    case 18:
+      SAVE_STRING(lookup->zip_code);
+      break;
+    case 19:
+      SAVE_STRING(lookup->po_box);
+      break;
+    case 20:
+      SAVE_STRING(lookup->attention_line);
+      break;
+    case 21:
+      SAVE_STRING(lookup->frn);
+      break;    
+  }
 }
 
 uint32_t sqliteReader::varint(uint16_t &offset) {
@@ -182,12 +345,130 @@ uint32_t sqliteReader::varint(uint16_t &offset) {
   return r << (i == 8 ? 8 : 7) | j;
 }
 
+void sqliteReader::read_page(FILE *f, uint32_t page) {
+  fseek(f, (page-1) * page_size, SEEK_SET);
+  fread((void *)page_buffer, page_size, 1, f);
+  parse_page();
+}
+
+bool sqliteReader::lookup_call(const char *call) {
+  uint32_t rootpage;
+  uint32_t child;
+  for (uint16_t i=0; i< number_cells; i++) {
+    if (!strcmp(schema[i].type, "table") && !strcmp(schema[i].tbl_name,"lookup")) {
+      rootpage = schema[i].rootpage;
+      break;
+    }
+  }
+  FILE *f = fopen(filename, "rb");
+  read_page(f, rootpage);
+  while (1) {
+    uint16_t lo = 0;
+    uint16_t hi = number_cells;
+    uint16_t mid;
+    int compare;
+    while (lo < hi) {
+      mid = (lo + hi) / 2;
+      parse_payload(cell_offset[mid], 1);
+      compare = strcmp(lookup.callsign, call);
+      if (!compare) {
+        parse_payload(cell_offset[mid]);
+        return true;
+      }
+      if (compare < 0) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    if (type != 2) {
+      return false;
+    }
+  
+    if (lo == number_cells) {
+      child = right_child;
+    } else {
+      if (lo != mid) {
+        parse_payload(cell_offset[lo], 1);
+      }
+      child = left_child;
+    }
+    read_page(f, child);
+  }
+
+  fclose(f);
+
+}
+
 sqliteReader::~sqliteReader() {
   free(page_buffer);
   free(filename);
   free(cell_offset);
+  free(schema);
 }
+
+const char *fmt = 
+  "call:      %s\r\n"
+  "call code: %s\r\n"
+  "grant:     %s\r\n"
+  "expired:   %s\r\n"
+  "cancelled: %s\r\n"
+  "class:     %s\r\n"
+  "previous:  %s\r\n"
+  "t call:    %s\r\n"
+  "t name:    %s\r\n"
+  "app code:  %s\r\n"
+  "ent name:  %s\r\n"
+  "first:     %s\r\n"
+  "mi:        %s\r\n"
+  "last:      %s\r\n"
+  "suffix:    %s\r\n"
+  "street:    %s\r\n"
+  "city:      %s\r\n"
+  "state:     %s\r\n"
+  "ZIP:       %s\r\n"
+  "po box     %s\r\n"
+  "attn:      %s\r\n"
+  "frn:       %s\r\n";
+
 
 int main(void) {
   sqliteReader reader = sqliteReader("fcc.sqlite");
+  char buff[80];
+  char *input = buff;
+  size_t input_size = sizeof(input);
+  while (true) {
+    printf("Enter call => ");
+     if (getline(&input, &input_size, stdin) == 1) {
+       break;
+     } else {
+      input[strlen(input) - 1] = 0;
+      if (reader.lookup_call(input)) {
+        printf (fmt, reader.lookup.callsign,
+                    reader.lookup.radio_service_code,
+                    reader.lookup.grant_date,
+                    reader.lookup.expired_date,
+                    reader.lookup.cancellation_date,
+                    reader.lookup.operator_class,
+                    reader.lookup.previous_callsign,
+                    reader.lookup.trustee_callsign,
+                    reader.lookup.trustee_name,
+                    reader.lookup.applicant_type_code,
+                    reader.lookup.entity_name,
+                    reader.lookup.first_name,
+                    reader.lookup.mi,
+                    reader.lookup.last_name,
+                    reader.lookup.suffix,
+                    reader.lookup.street_address,
+                    reader.lookup.city,
+                    reader.lookup.state,
+                    reader.lookup.zip_code,
+                    reader.lookup.po_box,
+                    reader.lookup.attention_line,
+                    reader.lookup.frn);
+      } else {
+        printf("Not found\r\n");
+      }
+    }
+  }
 }
