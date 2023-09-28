@@ -12,7 +12,7 @@
 # compared to fcc.sh, this version creates lookup as a table rather than a view
 # and deletes all the other tables
 
-# wget https://data.fcc.gov/download/pub/uls/complete/l_amat.zip
+curl https://data.fcc.gov/download/pub/uls/complete/l_amat.zip --output l_amat.zip
 
 rm fcc.sqlite
 rm -r l_amat
