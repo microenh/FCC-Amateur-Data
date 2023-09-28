@@ -1,3 +1,5 @@
+#! /Users/mark/miniconda3/envs/FCC/bin/python
+
 import tkinter as tk
 from tkinter import ttk, font
 from PIL import Image, ImageTk
