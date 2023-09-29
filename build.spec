@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['fcc.py'],
+    ['fcc.py', 'db_setup_strings.py'],
     pathex=[],
     binaries=[],
     datas=[('./FCC_Seal_1934_125.png', '.')],
