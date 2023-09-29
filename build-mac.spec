@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['fcc.py', 'db_setup_strings.py'],
+    ['fcc.py'],
     pathex=[],
     binaries=[],
     datas=[('./FCC_Seal_1934_125.png', '.')],
@@ -31,7 +31,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['FCC_Seal.icns'],
+    icon=['FCC_Seal_1934_125.png'],
 )
 coll = COLLECT(
     exe,
@@ -40,12 +40,12 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='FCC Database',
+    name='FCC_Database',
 )
 app = BUNDLE(
     coll,
-    name='FCC Database.app',
-    icon='FCC_Seal.icns',
+    name='FCC_Database.app',
+    icon='FCC_Seal_1934_125.png',
     version='0.1.0.0β',
     bundle_identifier=None,
     info_plist = {
