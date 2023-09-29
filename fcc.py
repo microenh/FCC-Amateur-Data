@@ -6,6 +6,7 @@ import sqlite3
 import os
 import requests, zipfile
 from io import BytesIO
+import time
 
 from db_setup_strings import *
 
@@ -39,15 +40,17 @@ class App(tk.Tk):
 
         menu_font = font.Font(family='TkMenuFont', size=14)
         heading_font = font.Font(family='TkHeadingFont', size=20)
+        small_font = font.Font(family='TkMenuFont', size=8)
 
         style = ttk.Style()
         style.theme_use('default')
-        # print (self.tk.call('tk', 'windowingsystem')) # aqua on macos
+        # print (self.tk.call('tk', 'windowingsystem')) # aqua on macos, x11 on Raspberry pi
+        self.windowingsystem = self.tk.call('tk', 'windowingsystem')
         style.configure('item.TLabel', foreground='white', background=BG_COLOR, font=menu_font)
         style.configure('ingredient.TLabel', foreground='white', background=DARK_BG_COLOR, font=menu_font)
         style.configure('heading.TLabel', foreground='yellow', background=BG_COLOR, font=heading_font)
-        style.configure('big.TButton', font=heading_font) 
-
+        style.configure('big.TButton', font=heading_font)
+        style.configure('small.TButton', foreground='white', background=DARK_BG_COLOR, font=small_font) 
         style.configure('new.TEntry', foreground='black', background='white', insertcolor='black', insertwidth='1')
 
         style.map('big.TButton', 
@@ -59,6 +62,9 @@ class App(tk.Tk):
         frame.pack_propagate(False)
 
         # frame widgets
+        if self.windowingsystem == 'x11':
+            ttk.Button(frame, style='small.TButton', text='Preferences', command=self.showPreferencesDialog).pack(anchor='w', padx=(10,0), pady=(10,0))
+
         tk.Label(frame, image=self.image, bg=BG_COLOR).pack(pady=20)
         self.get_db_date()
         ttk.Label(frame, style='item.TLabel', textvariable=self.dbDate).pack()
@@ -69,12 +75,13 @@ class App(tk.Tk):
         entry.bind('<Return>', lambda event: self.lookupCall())
         entry.pack(side='left', pady=20)
         entry.focus_set()
-        
+
         ttk.Label(frame, style='heading.TLabel', textvariable=self.displayCall).pack()
         ttk.Label(frame, style='item.TLabel', textvariable=self.lookupResult).pack(pady=(10,0))
 
-        self.createcommand('tk::mac::ShowPreferences', self.showPreferencesDialog)
-        self.createcommand('tk::mac::ShowHelp', self.showHelpDialog)
+        if self.windowingsystem == 'aqua':
+            self.createcommand('tk::mac::ShowPreferences', self.showPreferencesDialog)
+            self.createcommand('tk::mac::ShowHelp', self.showHelpDialog)
 
     def updateFromFCC(self):
         """Populate fcc.sqlite database with data downloaded from FCC."""
@@ -89,6 +96,7 @@ class App(tk.Tk):
             con.executemany(stmt, data)
             con.commit()
 
+        start = time.time()
         update_status_display('Downloading')
 
         zf = zipfile.ZipFile(BytesIO(requests.get(FCC_URL).content))
@@ -120,8 +128,7 @@ class App(tk.Tk):
         con.close()
 
         self.get_db_date()
-        update_status_display('Done')
-        self.after(3000, lambda: update_status_display(''))
+        update_status_display(f'Done in {(time.time() - start):.0f} seconds')
 
     def close_dialog(self, window):
         self.__dict__[window] = None

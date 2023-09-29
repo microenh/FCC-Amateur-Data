@@ -1,13 +1,23 @@
 To compile to App
 
+Mac
+
 pyinstaller -y \
-            --name 'FCC Database' \
+            --name 'FCC_Database' \
             --icon 'FCC_Seal.icns' \
             --windowed \
             --add-data './FCC_Seal_1934_125.png:.' \
-            --add-data './fcc5.sh:.' \
-            --add-data './fcc.sqlite:.' \
             fcc.py
+
+Rasperry Pi
+
+pyinstaller -y \
+            --name 'FCC_Database' \
+            --windowed \
+            --add-data './FCC_Seal_1934_125.png:.' \
+            --hidden-import 'PIL._tkinter_finder' \
+            fcc.py
+
 
 once the .spec file is available:
 pyinstaller -y <spec file name>     
