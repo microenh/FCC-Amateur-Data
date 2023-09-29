@@ -219,3 +219,5 @@ sqlite3 fcc.sqlite 'drop table counts'
 sqlite3 fcc.sqlite 'VACUUM'
 
 rm -r l_amat
+
+rm l_amat.zip

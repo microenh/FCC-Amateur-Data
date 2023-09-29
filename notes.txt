@@ -1,0 +1,84 @@
+To compile to App
+
+pyinstaller -y \
+            --name 'FCC Database' \
+            --icon 'FCC_Seal.icns' \
+            --windowed \
+            --add-data './FCC_Seal_1934_125.png:.' \
+            --add-data './fcc5.sh:.' \
+            --add-data './fcc.sqlite:.' \
+            fcc.py
+
+once the .spec file is available:
+pyinstaller -y <spec file name>     
+
+To add info to the about...
+
+Edit the .spec file
+
+app = BUNDLE(
+    coll,
+    name='FCC Database.app',
+    icon='FCC_Seal.icns',
+    version='0.1.0.0β',
+    bundle_identifier='com.microenh.fcc_data',
+    info_plist = {
+	    'NSHumanReadableCopyright' : 'Copyright ©2023 Microcomputer Enhancement.\nAll rights reserved.'
+    }
+)
+
+
+To create icon file
+python
+from PIL import Image
+
+image = Image.open(<filename>)
+image.save(<filename with icns extension>)
+
+Note: help using Apple HelpBook is very cumbersome to add.
+see: https://marioaguzman.wordpress.com/2020/09/12/auth/
+
+
+import sqlite3
+
+# Connecting to sqlite
+# connection object
+connection_obj = sqlite3.connect('geek.db')
+
+# cursor object
+cursor_obj = connection_obj.cursor()
+
+# Drop the GEEK table if already exists.
+cursor_obj.execute("DROP TABLE IF EXISTS GEEK")
+
+# Creating table
+table = """ CREATE TABLE GEEK (
+			Email VARCHAR(255) NOT NULL,
+			First_Name CHAR(25) NOT NULL,
+			Last_Name CHAR(25),
+			Score INT
+		); """
+
+cursor_obj.execute(table)
+
+print("Table is Ready")
+
+# Close the connection
+connection_obj.close()
+
+import sqlite3
+
+persons = [
+    ("Hugo", "Boss"),
+    ("Calvin", "Klein")
+]
+
+con = sqlite3.connect(":memory:")
+
+# Create the table
+con.execute("create table person(firstname, lastname)")
+
+# Fill the table
+con.executemany("insert into person(firstname, lastname) values (?,?)", persons)
+
+db.execute("vacuum main into '/tmp/saved2.db'")
